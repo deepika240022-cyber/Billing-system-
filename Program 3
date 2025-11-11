@@ -1,0 +1,184 @@
+package ui;
+
+import model.Item;
+import store.Inventory;
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.io.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class BillingApp extends JFrame {
+    private Inventory inventory;
+    private JTable tableItems, tableCart;
+    private JTextField txtQty, txtCustomer, txtDiscount, txtTax, txtPayment;
+    private JLabel lblSubtotal, lblTotal, lblChange;
+    private DefaultTableModel modelItems, modelCart;
+    private double subtotal = 0;
+
+    public BillingApp() {
+        super("Grocery Store Billing System");
+        inventory = new Inventory();
+        setSize(900, 500);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLayout(new GridLayout(1, 2));
+
+        // === LEFT PANEL ===
+        JPanel leftPanel = new JPanel(new BorderLayout());
+        modelItems = new DefaultTableModel(new String[]{"ID", "Name", "Price", "Stock"}, 0);
+        tableItems = new JTable(modelItems);
+        refreshItemTable();
+
+        JPanel bottomPanel = new JPanel();
+        txtQty = new JTextField("1", 5);
+        JButton btnAdd = new JButton("Add to Cart");
+        JButton btnLoad = new JButton("Load Inv");
+        JButton btnSave = new JButton("Save Inv");
+
+        bottomPanel.add(new JLabel("Qty:"));
+        bottomPanel.add(txtQty);
+        bottomPanel.add(btnAdd);
+        bottomPanel.add(btnLoad);
+        bottomPanel.add(btnSave);
+
+        leftPanel.add(new JScrollPane(tableItems), BorderLayout.CENTER);
+        leftPanel.add(bottomPanel, BorderLayout.SOUTH);
+
+        // === RIGHT PANEL ===
+        JPanel rightPanel = new JPanel(new BorderLayout());
+        modelCart = new DefaultTableModel(new String[]{"ID", "Name", "Qty", "Total"}, 0);
+        tableCart = new JTable(modelCart);
+        rightPanel.add(new JScrollPane(tableCart), BorderLayout.CENTER);
+
+        JPanel btnPanel = new JPanel();
+        JButton btnRemove = new JButton("Remove Selected");
+        JButton btnClear = new JButton("Clear Cart");
+        btnPanel.add(btnRemove);
+        btnPanel.add(btnClear);
+        rightPanel.add(btnPanel, BorderLayout.NORTH);
+
+        // Billing form
+        JPanel billPanel = new JPanel(new GridLayout(9, 2));
+        txtCustomer = new JTextField();
+        txtDiscount = new JTextField("0");
+        txtTax = new JTextField("5");
+        txtPayment = new JTextField("0");
+        lblSubtotal = new JLabel("0.00");
+        lblTotal = new JLabel("0.00");
+        lblChange = new JLabel("0.00");
+
+        billPanel.add(new JLabel("Customer:")); billPanel.add(txtCustomer);
+        billPanel.add(new JLabel("Discount %:")); billPanel.add(txtDiscount);
+        billPanel.add(new JLabel("Tax %:")); billPanel.add(txtTax);
+        billPanel.add(new JLabel("Payment:")); billPanel.add(txtPayment);
+        billPanel.add(new JLabel("Subtotal:")); billPanel.add(lblSubtotal);
+        billPanel.add(new JLabel("Total:")); billPanel.add(lblTotal);
+        billPanel.add(new JLabel("Change:")); billPanel.add(lblChange);
+
+        JButton btnReceipt = new JButton("Generate Receipt");
+        JButton btnPrint = new JButton("Print");
+        JButton btnExport = new JButton("Export TXT");
+
+        billPanel.add(btnReceipt);
+        billPanel.add(btnPrint);
+        billPanel.add(btnExport);
+
+        rightPanel.add(billPanel, BorderLayout.SOUTH);
+
+        add(leftPanel);
+        add(rightPanel);
+
+        // === BUTTON ACTIONS ===
+        btnAdd.addActionListener(e -> addToCart());
+        btnRemove.addActionListener(e -> removeSelected());
+        btnClear.addActionListener(e -> clearCart());
+        btnLoad.addActionListener(e -> refreshItemTable());
+        btnSave.addActionListener(e -> inventory.saveInventory());
+        btnReceipt.addActionListener(e -> generateReceipt());
+    }
+
+    private void refreshItemTable() {
+        modelItems.setRowCount(0);
+        for (Item i : inventory.getItems()) {
+            modelItems.addRow(new Object[]{i.getId(), i.getName(), i.getPrice(), i.getStock()});
+        }
+    }
+
+    private void addToCart() {
+        int row = tableItems.getSelectedRow();
+        if (row < 0) return;
+        String id = modelItems.getValueAt(row, 0).toString();
+        String name = modelItems.getValueAt(row, 1).toString();
+        double price = Double.parseDouble(modelItems.getValueAt(row, 2).toString());
+        int qty = Integer.parseInt(txtQty.getText());
+        double total = price * qty;
+        modelCart.addRow(new Object[]{id, name, qty, total});
+        subtotal += total;
+        lblSubtotal.setText(String.format("%.2f", subtotal));
+        calculateTotal();
+    }
+
+    private void removeSelected() {
+        int row = tableCart.getSelectedRow();
+        if (row >= 0) {
+            double amt = Double.parseDouble(modelCart.getValueAt(row, 3).toString());
+            subtotal -= amt;
+            modelCart.removeRow(row);
+            lblSubtotal.setText(String.format("%.2f", subtotal));
+            calculateTotal();
+        }
+    }
+
+    private void clearCart() {
+        modelCart.setRowCount(0);
+        subtotal = 0;
+        lblSubtotal.setText("0.00");
+        calculateTotal();
+    }
+
+    private void calculateTotal() {
+        double discount = Double.parseDouble(txtDiscount.getText());
+        double tax = Double.parseDouble(txtTax.getText());
+        double total = subtotal - (subtotal * discount / 100) + (subtotal * tax / 100);
+        lblTotal.setText(String.format("%.2f", total));
+
+        double payment = Double.parseDouble(txtPayment.getText());
+        double change = payment - total;
+        lblChange.setText(String.format("%.2f", change));
+    }
+
+    private void generateReceipt() {
+        String customer = txtCustomer.getText().isEmpty() ? "Unknown" : txtCustomer.getText();
+        String fileName = "receipts/receipt_" + new SimpleDateFormat("yyyyMMddHHmmss").format(new Date())
+                + "-" + UUID.randomUUID().toString().substring(0, 8) + ".txt";
+
+        try (PrintWriter pw = new PrintWriter(new FileWriter(fileName))) {
+            pw.println("========= GROCERY STORE =========");
+            pw.println("Invoice: " + UUID.randomUUID().toString().substring(0, 12));
+            pw.println("Date: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+            pw.println("Customer: " + customer);
+            pw.println("----------------------------------");
+            pw.printf("%-6s %-10s %-4s %-5s%n", "ID", "Name", "Qty", "Total");
+            for (int i = 0; i < modelCart.getRowCount(); i++) {
+                pw.printf("%-6s %-10s %-4s %-5s%n",
+                        modelCart.getValueAt(i, 0),
+                        modelCart.getValueAt(i, 1),
+                        modelCart.getValueAt(i, 2),
+                        modelCart.getValueAt(i, 3));
+            }
+            pw.println("----------------------------------");
+            pw.println("Subtotal: " + lblSubtotal.getText());
+            pw.println("Discount (" + txtDiscount.getText() + "%): " + (subtotal * Double.parseDouble(txtDiscount.getText()) / 100));
+            pw.println("Tax (" + txtTax.getText() + "%): " + (subtotal * Double.parseDouble(txtTax.getText()) / 100));
+            pw.println("Total: " + lblTotal.getText());
+            pw.println("Payment: " + txtPayment.getText());
+            pw.println("Change: " + lblChange.getText());
+            pw.println("========= THANK YOU =========");
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Error writing receipt!");
+        }
+
+        JOptionPane.showMessageDialog(this, "Receipt saved!");
+    }
+}
